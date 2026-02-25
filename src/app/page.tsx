@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { ProjectIntakeForm } from "@/components/project-intake";
 
 /* ─── Icon Components ─── */
 
@@ -163,7 +164,7 @@ export default function Home() {
           {/* Process steps */}
           <div className="grid md:grid-cols-3 gap-8">
             {[
-              { step: "01", title: "Describe", text: "Email us your project description and any assets you have." },
+              { step: "01", title: "Describe", text: "Fill out our project intake form with your business details and style preferences." },
               { step: "02", title: "Build", text: "We design and develop your one-page app with AI-first tooling." },
               { step: "03", title: "Launch", text: "Deployed to Cloudflare with your custom domain, SSL, and hosting." },
             ].map((item) => (
@@ -328,37 +329,8 @@ export default function Home() {
       {/* ─── Divider ─── */}
       <div className="divider-sun" />
 
-      {/* ─── Contact ─── */}
-      <section id="contact" className="relative py-32 px-6">
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-orange/5 blur-3xl" />
-        </div>
-
-        <div className="relative z-10 max-w-2xl mx-auto text-center">
-          <p className="text-orange uppercase tracking-[0.3em] text-sm font-medium mb-4">Get In Touch</p>
-          <h2 className="text-4xl md:text-5xl font-bold mb-6">
-            Email Your <span className="text-gradient-sun">Project</span>
-          </h2>
-          <p className="text-foreground/60 text-lg mb-12 leading-relaxed">
-            Send us a description of your business, what you need, and any images or
-            content you&apos;d like on your site. We&apos;ll take it from there.
-          </p>
-
-          <a
-            href="mailto:getaonepageapp@gmail.com?subject=New%20One-Page%20App%20Project"
-            className="inline-flex items-center gap-3 bg-orange hover:bg-orange-dark text-warm-black font-bold px-10 py-5 rounded-full text-xl transition-all hover:scale-105 shadow-lg shadow-orange/25"
-          >
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-            </svg>
-            getaonepageapp@gmail.com
-          </a>
-
-          <p className="text-foreground/30 text-sm mt-8">
-            We typically respond within 24 hours.
-          </p>
-        </div>
-      </section>
+      {/* ─── Contact / Project Intake ─── */}
+      <ProjectIntakeForm />
 
       {/* ─── Footer ─── */}
       <footer className="border-t border-orange/10 py-12 px-6">
