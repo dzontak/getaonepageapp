@@ -118,6 +118,26 @@ export interface ProjectBrief {
   plainText: string;
 }
 
+/* ─── AI Enhancement ─── */
+
+export interface SiteSection {
+  sectionName: string;
+  purpose: string;
+  suggestedContent: string;
+}
+
+export interface SiteSpec {
+  headline: string;
+  subheadline: string;
+  seoDescription: string;
+  sections: SiteSection[];
+}
+
+export interface AiEnhancement {
+  refinedBrief: string;
+  siteSpec: SiteSpec;
+}
+
 /* ─── State ─── */
 
 export interface IntakeState {

@@ -2,13 +2,17 @@
 
 import type { ProjectBrief } from "@/agents/project-intake";
 import { downloadBrief } from "@/agents/project-intake";
+import type { AiState } from "@/hooks/useProjectIntake";
+import { AiEnhancementPanel } from "./AiEnhancementPanel";
 
 interface ReviewSummaryProps {
   brief: ProjectBrief;
   onReset: () => void;
+  aiState: AiState;
+  onRefine: () => void;
 }
 
-export function ReviewSummary({ brief, onReset }: ReviewSummaryProps) {
+export function ReviewSummary({ brief, onReset, aiState, onRefine }: ReviewSummaryProps) {
   return (
     <div className="animate-slide-in-right">
       {/* Success Header */}
@@ -72,8 +76,58 @@ export function ReviewSummary({ brief, onReset }: ReviewSummaryProps) {
         </button>
       </div>
 
+      {/* AI Enhancement Section */}
+      <div className="mt-8">
+        {aiState.status === "idle" && (
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={onRefine}
+              className="inline-flex items-center justify-center gap-2 border border-orange/30 hover:border-orange/60 bg-orange/5 hover:bg-orange/10 text-orange font-medium px-8 py-3 rounded-full text-sm transition-all hover:scale-105"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+              </svg>
+              Refine with Claude AI
+            </button>
+            <p className="text-foreground/30 text-xs mt-2">
+              Let Claude polish your brief and generate a site specification
+            </p>
+          </div>
+        )}
+
+        {aiState.status === "loading" && (
+          <div className="text-center py-8">
+            <div className="inline-flex items-center gap-3 text-foreground/60">
+              <svg className="w-5 h-5 text-orange animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              <span className="text-sm">Claude is analyzing your brief…</span>
+            </div>
+          </div>
+        )}
+
+        {aiState.status === "error" && (
+          <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-4 text-center">
+            <p className="text-sm text-red-400 mb-3">{aiState.message}</p>
+            <button
+              type="button"
+              onClick={onRefine}
+              className="text-sm text-orange hover:text-orange-light underline underline-offset-4 transition-colors"
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
+        {aiState.status === "success" && (
+          <AiEnhancementPanel enhancement={aiState.data} />
+        )}
+      </div>
+
       {/* Start Over */}
-      <div className="text-center mt-6">
+      <div className="text-center mt-8">
         <button
           type="button"
           onClick={onReset}

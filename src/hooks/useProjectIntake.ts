@@ -1,10 +1,11 @@
 "use client";
 
-import { useReducer, useCallback, useEffect } from "react";
+import { useReducer, useCallback, useEffect, useState } from "react";
 import type {
   FormStep,
   IntakeState,
   ProjectIntakeData,
+  AiEnhancement,
 } from "@/agents/project-intake";
 import {
   FORM_STEPS,
@@ -15,6 +16,8 @@ import {
   updateStepData,
   submitForm,
   resetForm,
+  formatPlainText,
+  refineWithClaude,
 } from "@/agents/project-intake";
 
 /* ─── Reducer ─── */
@@ -48,6 +51,14 @@ function reducer(state: IntakeState, action: Action): IntakeState {
       return state;
   }
 }
+
+/* ─── AI State Type ─── */
+
+export type AiState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "success"; data: AiEnhancement }
+  | { status: "error"; message: string };
 
 /* ─── localStorage Persistence ─── */
 
@@ -87,6 +98,7 @@ function clearStorage() {
 
 export function useProjectIntake() {
   const [state, dispatch] = useReducer(reducer, undefined, createInitialState);
+  const [aiState, setAiState] = useState<AiState>({ status: "idle" });
 
   // Restore from localStorage on mount
   useEffect(() => {
@@ -110,8 +122,24 @@ export function useProjectIntake() {
   const currentIdx = FORM_STEPS.indexOf(state.currentStep);
   const stepKey = state.currentStep === "review" ? null : state.currentStep;
 
+  const refineWithAI = useCallback(async () => {
+    if (!state.brief) return;
+    setAiState({ status: "loading" });
+    try {
+      const plainText = formatPlainText(state.brief);
+      const data = await refineWithClaude(plainText);
+      setAiState({ status: "success", data });
+    } catch (err) {
+      setAiState({
+        status: "error",
+        message: err instanceof Error ? err.message : "Something went wrong. Please try again.",
+      });
+    }
+  }, [state.brief]);
+
   return {
     state,
+    aiState,
     currentStepErrors: stepKey ? (state.stepErrors[stepKey] ?? []) : [],
     reviewErrors: state.stepErrors.review ?? [],
 
@@ -130,8 +158,11 @@ export function useProjectIntake() {
 
     reset: useCallback(() => {
       clearStorage();
+      setAiState({ status: "idle" });
       dispatch({ type: "RESET" });
     }, []),
+
+    refineWithAI,
 
     canGoBack: currentIdx > 0,
     canGoForward: currentIdx < FORM_STEPS.length - 1,
