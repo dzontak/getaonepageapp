@@ -40,6 +40,11 @@ const portfolio = [
     url: "https://pleasefixitforme.com",
     desc: "Handyman services for Miguel — clean, trustworthy layout that drives phone calls.",
   },
+  {
+    name: "Andrey the Carpenter",
+    url: "https://andrey-the-carpenter.pages.dev",
+    desc: "30+ years of master craftsmanship in Connecticut — custom woodwork, built-ins, and historic home restoration. Andrey is also our friend.",
+  },
 ];
 
 /* ─── Page ─── */
@@ -193,10 +198,10 @@ export default function Home() {
             <h2 className="text-4xl md:text-5xl font-bold mb-4">
               Sites We&apos;ve <span className="text-gradient-sun">Built</span>
             </h2>
-            <p className="text-foreground/50 text-lg">Real businesses, real results.</p>
+            <p className="text-foreground/50 text-lg">When we build a site for you, we become friends.</p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-8">
+          <div className="grid md:grid-cols-3 gap-8">
             {portfolio.map((p) => (
               <a
                 key={p.name}
