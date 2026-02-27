@@ -62,6 +62,15 @@ export type AiState =
   | { status: "success"; data: AiEnhancement }
   | { status: "error"; message: string };
 
+/* ─── Session Metadata (from Attractor graph result) ─── */
+
+export interface SessionMeta {
+  sessionId: string;
+  validationScore?: number;
+  creditsRemaining?: number;
+  nodeHistory: Array<{ from: string; to: string; edge: string; durationMs: number }>;
+}
+
 /* ─── localStorage Persistence ─── */
 
 const STORAGE_KEY = "zontak-project-intake";
@@ -69,10 +78,9 @@ const STORAGE_KEY = "zontak-project-intake";
 function saveToStorage(state: IntakeState) {
   if (typeof window === "undefined") return;
   try {
-    // Only persist form data, not brief or submission state
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data));
   } catch {
-    // Silently fail if storage is full or unavailable
+    // Silently fail
   }
 }
 
@@ -102,6 +110,8 @@ export function useProjectIntake() {
   const [state, dispatch] = useReducer(reducer, undefined, createInitialState);
   const [aiState, setAiState] = useState<AiState>({ status: "idle" });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [sessionMeta, setSessionMeta] = useState<SessionMeta | null>(null);
+  const [iterationCount, setIterationCount] = useState(0);
 
   // Restore from localStorage on mount
   useEffect(() => {
@@ -126,12 +136,13 @@ export function useProjectIntake() {
   const stepKey = state.currentStep === "review" ? null : state.currentStep;
 
   /**
-   * Full agentic submit:
+   * Full Attractor graph submission.
+   *
+   * Flow:
    *   1. Generate plain-text brief client-side (for the server prompt)
-   *   2. POST to /api/submit-intake → Claude refines brief; emails fire server-side
-   *   3. On success: mark submitted + auto-populate the AI enhancement panel
-   *   4. On failure: graceful fallback — mark submitted locally, aiState stays idle
-   *      so the user can still manually trigger "Refine with Claude AI"
+   *   2. POST to /api/submit-intake → runs 4-node graph server-side
+   *   3. On success: mark submitted + auto-populate AI panel + store session meta
+   *   4. On failure: graceful fallback — mark submitted locally; manual Refine available
    */
   const submit = useCallback(async () => {
     setIsSubmitting(true);
@@ -139,22 +150,33 @@ export function useProjectIntake() {
       const tempBrief = generateBrief(state.data);
       const plainText = formatPlainText(tempBrief);
 
-      const enhancement = await submitIntake(state.data, plainText);
+      const result = await submitIntake(state.data, plainText, iterationCount);
 
       dispatch({ type: "SUBMIT" });
-      setAiState({ status: "success", data: enhancement });
+
+      if (result.enhancement) {
+        setAiState({ status: "success", data: result.enhancement });
+      }
+
+      setSessionMeta({
+        sessionId: result.sessionId,
+        validationScore: result.validationScore,
+        creditsRemaining: result.creditsRemaining,
+        nodeHistory: result.history,
+      });
+
       clearStorage();
     } catch {
-      // Graceful fallback: still show local brief, manual Refine button stays available
+      // Graceful fallback: show local brief, manual Refine button stays available
       dispatch({ type: "SUBMIT" });
     } finally {
       setIsSubmitting(false);
     }
-  }, [state.data]);
+  }, [state.data, iterationCount]);
 
   /**
    * Manual re-refinement — used as fallback when auto-submit failed (dev / network error)
-   * or when the user wants to regenerate the AI analysis.
+   * or when the user wants to regenerate. Uses the existing /api/refine-brief endpoint.
    */
   const refineWithAI = useCallback(async () => {
     if (!state.brief) return;
@@ -175,6 +197,7 @@ export function useProjectIntake() {
     state,
     aiState,
     isSubmitting,
+    sessionMeta,
     currentStepErrors: stepKey ? (state.stepErrors[stepKey] ?? []) : [],
     reviewErrors: state.stepErrors.review ?? [],
 
@@ -195,6 +218,8 @@ export function useProjectIntake() {
       clearStorage();
       setAiState({ status: "idle" });
       setIsSubmitting(false);
+      setSessionMeta(null);
+      setIterationCount(0);
       dispatch({ type: "RESET" });
     }, []),
 

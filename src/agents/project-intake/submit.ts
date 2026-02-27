@@ -1,37 +1,59 @@
 import type { AiEnhancement, ProjectIntakeData } from "./types";
 
+/* ─── Response shape from POST /api/submit-intake ─── */
+
+export interface GraphNodeTransition {
+  from: string;
+  to: string;
+  edge: string;
+  timestamp: string;
+  durationMs: number;
+}
+
+export interface GraphResult {
+  sessionId: string;
+  status: "completed" | "failed" | "running";
+  enhancement?: AiEnhancement;
+  validationScore?: number;
+  creditsRemaining?: number;
+  history: GraphNodeTransition[];
+}
+
 /**
- * Posts the full intake data + pre-formatted plain text to the Cloudflare Pages
- * Function at /api/submit-intake.
+ * Submits the full intake form to the Attractor graph execution endpoint.
  *
  * The server will:
- *   1. Call Claude to generate a polished brief and site spec
- *   2. Email the Zontak team a lead notification
- *   3. Email the client a confirmation with their brief
+ *   1. Run 4-node graph: assess → generate → validate → deliver
+ *   2. Auto-refine the brief with Claude at the generate node
+ *   3. Self-correct via the validate → generate feedback loop (max 1 retry)
+ *   4. Email the Zontak team + the client at the deliver node
+ *   5. Track iteration credits (first 3 revisions included per client)
  *
- * Returns AiEnhancement on success; throws a descriptive Error on failure.
+ * Returns the full GraphResult including the session ID, enhancement, validation
+ * score, credits remaining, and the complete transition history.
  */
 export async function submitIntake(
   data: ProjectIntakeData,
   plainText: string,
-): Promise<AiEnhancement> {
+  iterationCount = 0,
+): Promise<GraphResult> {
   const response = await fetch("/api/submit-intake", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data, plainText }),
+    body: JSON.stringify({ data, plainText, iterationCount }),
   });
 
-  if (!response.ok) {
-    let message = `Server error (${response.status})`;
-    try {
-      const body = await response.json() as { error?: string };
-      if (body.error) message = body.error;
-    } catch {
-      // use default message
-    }
-    throw new Error(message);
+  let result: GraphResult;
+  try {
+    result = await response.json() as GraphResult;
+  } catch {
+    throw new Error(`Server error (${response.status}): could not parse response`);
   }
 
-  const result = await response.json() as { enhancement: AiEnhancement };
-  return result.enhancement;
+  if (!response.ok) {
+    const msg = (result as { error?: string }).error ?? `Server error (${response.status})`;
+    throw new Error(msg);
+  }
+
+  return result;
 }
