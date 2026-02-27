@@ -12,6 +12,7 @@ export function ProjectIntakeForm() {
   const {
     state,
     aiState,
+    isSubmitting,
     currentStepErrors,
     next,
     prev,
@@ -94,6 +95,17 @@ export function ProjectIntakeForm() {
               <SummaryRow label="Style" value={state.data.style.stylePreset.charAt(0).toUpperCase() + state.data.style.stylePreset.slice(1)} />
               <SummaryRow label="Contact" value={state.data.contact.name} sub={state.data.contact.email} />
             </div>
+
+            {/* Submitting indicator */}
+            {isSubmitting && (
+              <div className="mt-4 flex items-center gap-2 text-foreground/40 text-sm">
+                <svg className="w-4 h-4 text-orange animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Claude is processing your brief…
+              </div>
+            )}
           </div>
         );
     }
@@ -126,7 +138,7 @@ export function ProjectIntakeForm() {
             onSubmit={(e) => {
               e.preventDefault();
               if (isReviewStep) {
-                submit();
+                void submit();
               } else {
                 next();
               }
@@ -140,7 +152,8 @@ export function ProjectIntakeForm() {
                 <button
                   type="button"
                   onClick={prev}
-                  className="flex items-center gap-2 text-foreground/50 hover:text-foreground text-sm font-medium transition-colors"
+                  disabled={isSubmitting}
+                  className="flex items-center gap-2 text-foreground/50 hover:text-foreground text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -153,17 +166,34 @@ export function ProjectIntakeForm() {
 
               <button
                 type="submit"
-                className={`flex items-center gap-2 font-semibold px-6 py-2.5 rounded-full text-sm transition-all hover:scale-105 ${
+                disabled={isSubmitting}
+                className={`flex items-center gap-2 font-semibold px-6 py-2.5 rounded-full text-sm transition-all ${
+                  isSubmitting
+                    ? "opacity-70 cursor-not-allowed"
+                    : "hover:scale-105"
+                } ${
                   isReviewStep
                     ? "bg-orange hover:bg-orange-dark text-warm-black shadow-lg shadow-orange/20"
                     : "bg-orange/15 hover:bg-orange/25 text-orange border border-orange/20"
                 }`}
               >
-                {isReviewStep ? "Submit Brief" : "Next"}
-                {!isReviewStep && (
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                  </svg>
+                {isSubmitting ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Submitting…
+                  </>
+                ) : isReviewStep ? (
+                  "Submit Brief"
+                ) : (
+                  <>
+                    Next
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </>
                 )}
               </button>
             </div>

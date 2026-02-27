@@ -18,6 +18,8 @@ import {
   resetForm,
   formatPlainText,
   refineWithClaude,
+  submitIntake,
+  generateBrief,
 } from "@/agents/project-intake";
 
 /* ─── Reducer ─── */
@@ -99,6 +101,7 @@ function clearStorage() {
 export function useProjectIntake() {
   const [state, dispatch] = useReducer(reducer, undefined, createInitialState);
   const [aiState, setAiState] = useState<AiState>({ status: "idle" });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Restore from localStorage on mount
   useEffect(() => {
@@ -122,6 +125,37 @@ export function useProjectIntake() {
   const currentIdx = FORM_STEPS.indexOf(state.currentStep);
   const stepKey = state.currentStep === "review" ? null : state.currentStep;
 
+  /**
+   * Full agentic submit:
+   *   1. Generate plain-text brief client-side (for the server prompt)
+   *   2. POST to /api/submit-intake → Claude refines brief; emails fire server-side
+   *   3. On success: mark submitted + auto-populate the AI enhancement panel
+   *   4. On failure: graceful fallback — mark submitted locally, aiState stays idle
+   *      so the user can still manually trigger "Refine with Claude AI"
+   */
+  const submit = useCallback(async () => {
+    setIsSubmitting(true);
+    try {
+      const tempBrief = generateBrief(state.data);
+      const plainText = formatPlainText(tempBrief);
+
+      const enhancement = await submitIntake(state.data, plainText);
+
+      dispatch({ type: "SUBMIT" });
+      setAiState({ status: "success", data: enhancement });
+      clearStorage();
+    } catch {
+      // Graceful fallback: still show local brief, manual Refine button stays available
+      dispatch({ type: "SUBMIT" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [state.data]);
+
+  /**
+   * Manual re-refinement — used as fallback when auto-submit failed (dev / network error)
+   * or when the user wants to regenerate the AI analysis.
+   */
   const refineWithAI = useCallback(async () => {
     if (!state.brief) return;
     setAiState({ status: "loading" });
@@ -140,6 +174,7 @@ export function useProjectIntake() {
   return {
     state,
     aiState,
+    isSubmitting,
     currentStepErrors: stepKey ? (state.stepErrors[stepKey] ?? []) : [],
     reviewErrors: state.stepErrors.review ?? [],
 
@@ -154,11 +189,12 @@ export function useProjectIntake() {
     prev: useCallback(() => dispatch({ type: "PREV_STEP" }), []),
     goTo: useCallback((step: FormStep) => dispatch({ type: "GO_TO_STEP", step }), []),
 
-    submit: useCallback(() => dispatch({ type: "SUBMIT" }), []),
+    submit,
 
     reset: useCallback(() => {
       clearStorage();
       setAiState({ status: "idle" });
+      setIsSubmitting(false);
       dispatch({ type: "RESET" });
     }, []),
 
