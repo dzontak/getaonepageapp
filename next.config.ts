@@ -1,10 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "export",
-  images: {
-    unoptimized: true,
-  },
+  // Vercel handles Next.js natively — no static export needed.
+  // Image optimization is enabled automatically on Vercel Pro.
 };
 
 export default nextConfig;

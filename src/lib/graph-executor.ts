@@ -29,6 +29,7 @@ import {
   getOrCreateCredits,
   deductCredit,
   creditsRemaining,
+  type KVStore,
 } from "./graph-state";
 import {
   NODE_PROMPTS,
@@ -45,7 +46,7 @@ export interface GraphEnv {
   RESEND_API_KEY?: string;
   NOTIFY_EMAIL?: string;
   FROM_EMAIL?: string;
-  INTAKE_KV?: KVNamespace;
+  INTAKE_KV?: KVStore;
 }
 
 /* ─── Constants ─── */

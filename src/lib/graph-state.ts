@@ -1,13 +1,13 @@
 /**
  * KV state management for the Attractor execution model.
  *
- * Two namespaces stored under the INTAKE_KV binding:
+ * Two namespaces:
  *   session:{sessionId}  →  ExecutionState  (TTL: 30 days)
  *   credits:{email}      →  CreditRecord    (no TTL — permanent record)
  *
- * The KV binding (INTAKE_KV) must be created in the Cloudflare Pages dashboard:
- *   Settings → Functions → KV namespace bindings → Add binding
- *   Variable name: INTAKE_KV
+ * Uses a minimal KVStore interface compatible with @vercel/kv (and any
+ * Redis-like store). Configure Vercel KV in the dashboard and pass the
+ * imported `kv` client from @vercel/kv as INTAKE_KV in GraphEnv.
  */
 
 import type {
@@ -23,29 +23,36 @@ import {
   SESSION_TTL_SECONDS,
 } from "./graph-types";
 
+/**
+ * Minimal KV store interface — compatible with @vercel/kv.
+ * `get` returns parsed JSON directly; `set` accepts native objects.
+ */
+export interface KVStore {
+  get<T = unknown>(key: string): Promise<T | null>;
+  set(key: string, value: unknown, options?: { ex?: number }): Promise<unknown>;
+}
+
 /* ─── Session CRUD ─── */
 
 export async function loadSession(
   sessionId: string,
-  kv: KVNamespace,
+  kv: KVStore,
 ): Promise<ExecutionState | null> {
-  const raw = await kv.get(`${SESSION_KV_PREFIX}${sessionId}`);
-  if (!raw) return null;
-  return JSON.parse(raw) as ExecutionState;
+  return kv.get<ExecutionState>(`${SESSION_KV_PREFIX}${sessionId}`);
 }
 
 export async function saveSession(
   state: ExecutionState,
-  kv: KVNamespace,
+  kv: KVStore,
 ): Promise<void> {
   const updated: ExecutionState = {
     ...state,
     updatedAt: new Date().toISOString(),
   };
-  await kv.put(
+  await kv.set(
     `${SESSION_KV_PREFIX}${state.sessionId}`,
-    JSON.stringify(updated),
-    { expirationTtl: SESSION_TTL_SECONDS },
+    updated,
+    { ex: SESSION_TTL_SECONDS },
   );
 }
 
@@ -69,20 +76,18 @@ export function createSession(
 
 export async function loadCredits(
   email: string,
-  kv: KVNamespace,
+  kv: KVStore,
 ): Promise<CreditRecord | null> {
-  const raw = await kv.get(`${CREDITS_KV_PREFIX}${email}`);
-  if (!raw) return null;
-  return JSON.parse(raw) as CreditRecord;
+  return kv.get<CreditRecord>(`${CREDITS_KV_PREFIX}${email}`);
 }
 
 export async function saveCredits(
   record: CreditRecord,
-  kv: KVNamespace,
+  kv: KVStore,
 ): Promise<void> {
-  await kv.put(
+  await kv.set(
     `${CREDITS_KV_PREFIX}${record.email}`,
-    JSON.stringify({ ...record, updatedAt: new Date().toISOString() }),
+    { ...record, updatedAt: new Date().toISOString() },
   );
 }
 
@@ -92,7 +97,7 @@ export async function saveCredits(
  */
 export async function getOrCreateCredits(
   email: string,
-  kv: KVNamespace,
+  kv: KVStore,
 ): Promise<CreditRecord> {
   const existing = await loadCredits(email, kv);
   if (existing) return existing;
@@ -117,7 +122,7 @@ export async function getOrCreateCredits(
  */
 export async function deductCredit(
   email: string,
-  kv: KVNamespace,
+  kv: KVStore,
 ): Promise<CreditRecord> {
   const record = await getOrCreateCredits(email, kv);
   const remaining = record.total - record.used;

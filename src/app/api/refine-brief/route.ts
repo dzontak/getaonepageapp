@@ -1,13 +1,19 @@
 /**
- * Cloudflare Pages Function: POST /api/refine-brief
+ * POST /api/refine-brief
  *
- * Receives a plain-text project brief, sends it to the Anthropic API,
- * and returns a structured { refinedBrief, siteSpec } JSON response.
+ * Single-shot Claude call: receives a plain-text project brief and returns
+ * a structured { refinedBrief, siteSpec } response.
  *
- * Type definitions are inlined here because Workers bundle independently
- * from Next.js and cannot resolve the src/ path aliases. Keep these in
- * sync with src/agents/project-intake/types.ts → AiEnhancement / SiteSpec.
+ * Used by the "Refine with AI" button in the intake form for on-demand
+ * polish before the full agentic submission flow.
+ *
+ * Required env vars:
+ *   ANTHROPIC_API_KEY — Anthropic API key
  */
+
+import { NextRequest, NextResponse } from "next/server";
+
+export const maxDuration = 30;
 
 interface SiteSection {
   sectionName: string;
@@ -25,10 +31,6 @@ interface SiteSpec {
 interface AiEnhancement {
   refinedBrief: string;
   siteSpec: SiteSpec;
-}
-
-interface Env {
-  ANTHROPIC_API_KEY: string;
 }
 
 const SYSTEM_PROMPT = `You are a professional web strategist and copywriter for a one-page app agency. Given a raw project brief from a client intake form, do two things in one response:
@@ -56,29 +58,29 @@ You MUST respond with ONLY valid JSON — no markdown, no code fences, no explan
 
 Include 4-7 sections in the siteSpec. The sections should flow logically for a one-page website.`;
 
-export async function onRequestPost(context: EventContext<Env, string, unknown>): Promise<Response> {
-  const { request, env } = context;
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
 
-  if (!env.ANTHROPIC_API_KEY) {
-    return Response.json({ error: "API key not configured" }, { status: 500 });
+  if (!apiKey) {
+    return NextResponse.json({ error: "API key not configured" }, { status: 500 });
   }
 
   let brief: string;
   try {
     const body = await request.json() as { brief?: unknown };
     if (typeof body.brief !== "string" || !body.brief.trim()) {
-      return Response.json({ error: "Missing or invalid 'brief' field" }, { status: 400 });
+      return NextResponse.json({ error: "Missing or invalid 'brief' field" }, { status: 400 });
     }
     brief = body.brief.trim();
   } catch {
-    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   const anthropicResponse = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": env.ANTHROPIC_API_KEY,
+      "x-api-key": apiKey,
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
@@ -97,7 +99,7 @@ export async function onRequestPost(context: EventContext<Env, string, unknown>)
   if (!anthropicResponse.ok) {
     const errorText = await anthropicResponse.text();
     console.error("Anthropic API error:", anthropicResponse.status, errorText);
-    return Response.json(
+    return NextResponse.json(
       { error: "Failed to get AI response. Please try again." },
       { status: 502 },
     );
@@ -111,7 +113,6 @@ export async function onRequestPost(context: EventContext<Env, string, unknown>)
 
   let enhancement: AiEnhancement;
   try {
-    // Strip any accidental markdown fences before parsing
     const cleaned = rawText
       .replace(/^```(?:json)?\s*/i, "")
       .replace(/\s*```\s*$/, "")
@@ -119,19 +120,17 @@ export async function onRequestPost(context: EventContext<Env, string, unknown>)
     enhancement = JSON.parse(cleaned) as AiEnhancement;
   } catch {
     console.error("Failed to parse Claude response as JSON:", rawText.slice(0, 200));
-    return Response.json(
+    return NextResponse.json(
       { error: "AI returned an unexpected format. Please try again." },
       { status: 502 },
     );
   }
 
-  return Response.json(enhancement, {
-    headers: {
-      "Cache-Control": "no-store",
-    },
+  return NextResponse.json(enhancement, {
+    headers: { "Cache-Control": "no-store" },
   });
 }
 
-export async function onRequestGet(): Promise<Response> {
-  return Response.json({ error: "Method not allowed. Use POST." }, { status: 405 });
+export async function GET(): Promise<NextResponse> {
+  return NextResponse.json({ error: "Method not allowed. Use POST." }, { status: 405 });
 }

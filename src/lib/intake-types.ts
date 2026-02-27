@@ -1,9 +1,6 @@
 /**
  * Shared intake domain types.
- *
- * These are duplicated from src/agents/project-intake/types.ts because
- * Cloudflare Workers bundle independently and cannot resolve src/ path aliases.
- * Keep in sync manually.
+ * Used by both the API routes (server) and the client-side agent.
  */
 
 export interface BusinessInfo {

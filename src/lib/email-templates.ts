@@ -41,6 +41,9 @@ export function teamEmailHtml(
     ? `<span style="background:#3DA7DB22;color:#3DA7DB;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;margin-left:8px">REVISION #${iterationCount}</span>`
     : "";
 
+  // Satisfy TypeScript — style is available for future use
+  void style;
+
   return `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;background:#0d0d0d;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#e0e0e0">
 <div style="max-width:640px;margin:0 auto;padding:32px 20px">
