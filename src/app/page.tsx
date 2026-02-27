@@ -287,7 +287,7 @@ export default function Home() {
 
           {/* Stripe CTA */}
           <a
-            href="https://buy.stripe.com/placeholder"
+            href="https://buy.stripe.com/6oU5kw8yRd603SI0bNfjG00"
             target="_blank"
             rel="noopener noreferrer"
             className="group inline-flex items-center justify-center gap-3 bg-orange hover:bg-orange-dark text-warm-black font-bold px-10 py-5 rounded-full text-lg transition-all hover:scale-105 shadow-xl shadow-orange/25"
