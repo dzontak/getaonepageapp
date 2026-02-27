@@ -273,61 +273,39 @@ export default function Home() {
       {/* ─── Payment ─── */}
       <section id="pay" className="relative py-32 px-6">
         <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full bg-blue/5 blur-3xl" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full bg-orange/5 blur-3xl" />
         </div>
 
-        <div className="relative z-10 max-w-3xl mx-auto text-center">
+        <div className="relative z-10 max-w-xl mx-auto text-center">
           <p className="text-orange uppercase tracking-[0.3em] text-sm font-medium mb-4">Payment</p>
           <h2 className="text-4xl md:text-5xl font-bold mb-4">
             Pay for Your <span className="text-gradient-sun">Site</span>
           </h2>
-          <p className="text-foreground/50 text-lg mb-12">Choose your preferred payment method.</p>
-
-          <div className="grid md:grid-cols-2 gap-6 max-w-2xl mx-auto">
-            {/* Email / Invoice */}
-            <a
-              href="mailto:getaonepageapp@gmail.com?subject=Payment%20for%20One-Page%20App"
-              className="group p-8 rounded-2xl border border-orange/15 bg-warm-gray/30 hover:border-orange/40 hover:bg-warm-gray/50 transition-all text-left"
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-xl bg-orange/10 flex items-center justify-center">
-                  <svg className="w-6 h-6 text-orange" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-bold text-foreground group-hover:text-orange transition-colors">Email Invoice</h3>
-              </div>
-              <p className="text-foreground/50 text-sm leading-relaxed mb-4">
-                Request an invoice via email. We accept bank transfer, Zelle, and other traditional methods.
-              </p>
-              <span className="text-orange text-sm font-medium">Send request &rarr;</span>
-            </a>
-
-            {/* Pay with Crypto */}
-            <a
-              href="https://commerce.coinbase.com/checkout/4ab87ce4-d5eb-4783-b5fa-83fd117c137e"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group p-8 rounded-2xl border border-blue/15 bg-warm-gray/30 hover:border-blue/40 hover:bg-warm-gray/50 transition-all text-left"
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-xl bg-blue/10 flex items-center justify-center">
-                  <svg className="w-6 h-6 text-blue" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 1.5c4.694 0 8.5 3.806 8.5 8.5s-3.806 8.5-8.5 8.5S3.5 16.694 3.5 12 7.306 3.5 12 3.5zm-.5 4v1.05A3.001 3.001 0 009 11.5c0 1.398.956 2.573 2.25 2.905V16.5H10v1.5h1.5v1h1v-1H14v-1.5h-1.25v-2.095A3.001 3.001 0 0015 11.5c0-1.398-.956-2.573-2.25-2.905V6.5H14V5h-1.5V4h-1v1.5H10V7h1.5v1.05zm0 2.05c-.828 0-1.5.672-1.5 1.5s.672 1.5 1.5 1.5v-3zm1 0v3c.828 0 1.5-.672 1.5-1.5s-.672-1.5-1.5-1.5z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-bold text-foreground group-hover:text-blue transition-colors">Pay with Crypto</h3>
-              </div>
-              <p className="text-foreground/50 text-sm leading-relaxed mb-4">
-                Pay with Bitcoin, Ethereum, USDC, or other cryptocurrencies via Coinbase Commerce.
-              </p>
-              <span className="text-blue text-sm font-medium">Pay now &rarr;</span>
-            </a>
-          </div>
-
-          <p className="text-foreground/20 text-xs mt-8">
-            Crypto payments powered by Coinbase Commerce &middot; Secure &amp; instant
+          <p className="text-foreground/50 text-lg mb-12">
+            One payment. Everything included — build, deploy, hosting, SSL, and a year of maintenance.
           </p>
+
+          {/* Stripe CTA */}
+          <a
+            href="https://buy.stripe.com/placeholder"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group inline-flex items-center justify-center gap-3 bg-orange hover:bg-orange-dark text-warm-black font-bold px-10 py-5 rounded-full text-lg transition-all hover:scale-105 shadow-xl shadow-orange/25"
+          >
+            {/* Card icon */}
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+            </svg>
+            Pay $100 / year
+          </a>
+
+          {/* Stripe trust badge */}
+          <div className="mt-6 flex items-center justify-center gap-2 text-foreground/25 text-xs">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            Secured by Stripe &middot; All major cards accepted
+          </div>
         </div>
       </section>
 
