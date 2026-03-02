@@ -1,10 +1,14 @@
 /**
  * Attractor execution model types.
  *
- * The graph has 4 nodes: assess → generate → validate → deliver
- * Validate can loop back to generate (max 2 attempts total) before forcing deliver.
+ * The graph has 8 nodes:
+ *   assess → generate → validate → sanity_check → build → build_validate → deploy → deliver
  *
- * Each node's Claude response embeds the edge label so routing is deterministic
+ * Validate can loop back to generate (max 2 attempts total) before routing to sanity_check.
+ * Sanity_check gates the auto-build pipeline: qualifying submissions are built and deployed
+ * to Cloudflare Pages; others fall back to the email-only delivery flow.
+ *
+ * Each LLM node's Claude response embeds the edge label so routing is deterministic
  * and derived from the same call that produced the output.
  */
 
@@ -14,14 +18,30 @@ export type { ProjectIntakeData, AiEnhancement, SiteSpec };
 
 /* ─── Graph Topology ─── */
 
-export type NodeId = "assess" | "generate" | "validate" | "deliver";
+export type NodeId =
+  | "assess"
+  | "generate"
+  | "validate"
+  | "sanity_check"
+  | "build"
+  | "build_validate"
+  | "deploy"
+  | "deliver";
 
 export type EdgeLabel =
   | "proceed"         // assess → generate
   | "generated"       // generate → validate
-  | "passes"          // validate → deliver
+  | "passes"          // validate → sanity_check
   | "needs_revision"  // validate → generate (retry)
-  | "max_retries"     // validate → deliver (forced after 2 generate attempts)
+  | "max_retries"     // validate → sanity_check (forced after 2 generate attempts)
+  | "auto_build"      // sanity_check → build
+  | "skip_build"      // sanity_check → deliver (fallback to email-only)
+  | "built"           // build → build_validate
+  | "build_failed"    // build → deliver (graceful degradation)
+  | "html_passes"     // build_validate → deploy
+  | "html_fails"      // build_validate → deliver (graceful degradation)
+  | "deployed"        // deploy → deliver
+  | "deploy_failed"   // deploy → deliver (graceful degradation)
   | "done";           // deliver → terminal
 
 /* ─── Per-Node Output Schemas ─── */
@@ -55,15 +75,59 @@ export interface ValidateOutput {
   edge: "passes" | "needs_revision";
 }
 
+/** sanity_check: procedural gate deciding auto-build vs email-only */
+export interface SanityCheckOutput {
+  qualifies: boolean;
+  reasons: string[];         // why it qualifies or doesn't
+  edge: "auto_build" | "skip_build";
+}
+
+/** build: Claude-generated complete HTML+CSS page */
+export interface BuildOutput {
+  html: string;              // full <!DOCTYPE html>...</html>
+  buildNotes: string;        // Claude's notes about design choices
+  edge: "built";
+}
+
+/** build_validate: structural/quality check on the generated HTML */
+export interface BuildValidateOutput {
+  scores: {
+    structuralIntegrity: number;  // valid HTML, no broken tags
+    responsiveness: number;        // mobile-friendly CSS present
+    accessibility: number;         // alt text, ARIA, semantic HTML
+    brandAlignment: number;        // colors/style match the spec
+  };
+  overallScore: number;
+  issues: string[];
+  edge: "html_passes" | "html_fails";
+}
+
+/** deploy: Cloudflare Pages deployment result */
+export interface DeployOutput {
+  projectName: string;
+  deploymentUrl: string;     // e.g. "https://sunrise-bakery.pages.dev"
+  deploymentId: string;
+  edge: "deployed";
+}
+
 /** deliver: email dispatch + credit management */
 export interface DeliverOutput {
   teamEmailSent: boolean;
   clientEmailSent: boolean;
   creditsRemaining: number;
+  siteUrl?: string;          // present if deployment succeeded
   edge: "done";
 }
 
-export type NodeOutput = AssessOutput | GenerateOutput | ValidateOutput | DeliverOutput;
+export type NodeOutput =
+  | AssessOutput
+  | GenerateOutput
+  | ValidateOutput
+  | SanityCheckOutput
+  | BuildOutput
+  | BuildValidateOutput
+  | DeployOutput
+  | DeliverOutput;
 
 /* ─── Execution Context ─── */
 
@@ -79,6 +143,10 @@ export interface SessionContext {
   assessment?: AssessOutput;
   enhancement?: GenerateOutput;
   validation?: ValidateOutput;
+  sanityCheck?: SanityCheckOutput;
+  build?: BuildOutput;
+  buildValidation?: BuildValidateOutput;
+  deployment?: DeployOutput;
   delivery?: DeliverOutput;
 
   // Loop control
@@ -122,6 +190,7 @@ export interface GraphResult {
   enhancement?: GenerateOutput;   // present when status === "completed"
   validationScore?: number;        // overallScore from validate node
   creditsRemaining?: number;
+  siteUrl?: string;                // live site URL if auto-build + deploy succeeded
   history: NodeTransition[];       // full transition log for observability
 }
 

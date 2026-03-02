@@ -4,6 +4,9 @@
  * Two emails sent on each successful graph run:
  *   1. teamEmail   — structured lead notification to the Zontak team
  *   2. clientEmail — confirmation + polished brief + Stripe CTA to the client
+ *
+ * When a site has been auto-built and deployed (siteUrl present),
+ * the templates include a prominent "View Your Live Site" link.
  */
 
 import type { ProjectIntakeData } from "./intake-types";
@@ -16,6 +19,7 @@ export function teamEmailHtml(
   enhancement: GenerateOutput,
   validation: ValidateOutput | undefined,
   iterationCount: number,
+  siteUrl?: string,
 ): string {
   const { business, project, style, contact } = data;
   const { refinedBrief, siteSpec } = enhancement;
@@ -41,8 +45,22 @@ export function teamEmailHtml(
     ? `<span style="background:#3DA7DB22;color:#3DA7DB;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;margin-left:8px">REVISION #${iterationCount}</span>`
     : "";
 
+  const autoBuildBadge = siteUrl
+    ? `<span style="background:#4ade8022;color:#4ade80;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;margin-left:8px">AUTO-BUILT</span>`
+    : "";
+
   // Satisfy TypeScript — style is available for future use
   void style;
+
+  const siteUrlBlock = siteUrl
+    ? `<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:14px;padding:20px;margin-bottom:16px">
+        <p style="color:#4ade80;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin:0 0 14px">
+          🚀 Auto-Built Site
+        </p>
+        <a href="${siteUrl}" style="color:#3DA7DB;font-size:16px;font-weight:600;text-decoration:none">${siteUrl}</a>
+        <p style="color:#888;font-size:12px;margin:8px 0 0">Deployed automatically to Cloudflare Pages</p>
+      </div>`
+    : "";
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;background:#0d0d0d;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#e0e0e0">
@@ -50,12 +68,14 @@ export function teamEmailHtml(
 
   <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:14px;padding:24px;margin-bottom:20px">
     <p style="color:#F07D2E;font-size:22px;font-weight:800;margin:0 0 4px">
-      🔥 New Project Lead${iterBadge}
+      ${siteUrl ? "🚀" : "🔥"} ${siteUrl ? "Auto-Built Site" : "New Project Lead"}${iterBadge}${autoBuildBadge}
     </p>
     <p style="color:#666;font-size:13px;margin:0">
       ${new Date().toLocaleString("en-US", { timeZoneName: "short" })} · via getaonepageapp.com
     </p>
   </div>
+
+  ${siteUrlBlock}
 
   <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:14px;padding:20px;margin-bottom:16px">
     <p style="color:#F07D2E;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin:0 0 14px">Business</p>
@@ -135,6 +155,7 @@ export function clientEmailHtml(
   data: ProjectIntakeData,
   enhancement: GenerateOutput,
   creditsRemaining: number,
+  siteUrl?: string,
 ): string {
   const { business, contact } = data;
   const { refinedBrief, siteSpec } = enhancement;
@@ -145,6 +166,37 @@ export function clientEmailHtml(
        </p>`
     : "";
 
+  // When site is auto-built, lead with the live URL
+  const siteBlock = siteUrl
+    ? `<div style="text-align:center;margin-bottom:24px;padding:24px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:16px">
+        <p style="color:#4ade80;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin:0 0 16px">
+          Your site is live!
+        </p>
+        <a href="${siteUrl}"
+           style="display:inline-block;background:#3DA7DB;color:#fff;font-weight:700;font-size:15px;padding:16px 36px;border-radius:999px;text-decoration:none">
+          View Your Live Site →
+        </a>
+        <p style="color:#888;font-size:13px;margin:10px 0 0">${siteUrl}</p>
+      </div>`
+    : "";
+
+  // Greeting changes based on auto-build vs email-only
+  const greetingText = siteUrl
+    ? `We've built and deployed your site for <strong style="color:#fff">${business.businessName}</strong>!
+       It's already live — click the link above to see it. Want a custom domain? Pay below and we'll set it up.`
+    : `We've received your project brief for <strong style="color:#fff">${business.businessName}</strong>.
+       Claude has reviewed and polished it — our team will reach out within
+       <strong style="color:#F07D2E">24 hours</strong>.`;
+
+  // CTA text changes based on whether site is already built
+  const ctaText = siteUrl
+    ? "Get Custom Domain + Hosting →"
+    : "Pay $100 / year to Start →";
+
+  const ctaSubtext = siteUrl
+    ? "Custom domain · SSL · Maintenance · All included for 1 year"
+    : "Build · Deploy · Hosting · SSL · Maintenance · All included";
+
   return `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;background:#0d0d0d;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#e0e0e0">
 <div style="max-width:600px;margin:0 auto;padding:40px 20px">
@@ -153,15 +205,15 @@ export function clientEmailHtml(
     <p style="font-size:26px;font-weight:800;margin:0 0 6px">
       <span style="color:#F07D2E">ZON</span><span style="color:#3DA7DB">TAK</span>
     </p>
-    <p style="color:#555;font-size:13px;margin:0">Your project brief is ready</p>
+    <p style="color:#555;font-size:13px;margin:0">${siteUrl ? "Your site is live" : "Your project brief is ready"}</p>
   </div>
+
+  ${siteBlock}
 
   <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:16px;padding:28px;margin-bottom:20px">
     <p style="font-size:16px;color:#e0e0e0;margin:0 0 12px">Hi ${contact.name} 👋</p>
     <p style="color:#aaa;font-size:14px;line-height:1.8;margin:0">
-      We've received your project brief for <strong style="color:#fff">${business.businessName}</strong>.
-      Claude has reviewed and polished it — our team will reach out within
-      <strong style="color:#F07D2E">24 hours</strong>.
+      ${greetingText}
     </p>
   </div>
 
@@ -188,9 +240,9 @@ export function clientEmailHtml(
   <div style="text-align:center;margin-bottom:32px">
     <a href="https://buy.stripe.com/6oU5kw8yRd603SI0bNfjG00"
        style="display:inline-block;background:#F07D2E;color:#0d0d0d;font-weight:700;font-size:15px;padding:16px 36px;border-radius:999px;text-decoration:none">
-      Pay $100 / year to Start →
+      ${ctaText}
     </a>
-    <p style="color:#444;font-size:12px;margin:10px 0 0">Build · Deploy · Hosting · SSL · Maintenance · All included</p>
+    <p style="color:#444;font-size:12px;margin:10px 0 0">${ctaSubtext}</p>
     ${creditNote}
   </div>
 

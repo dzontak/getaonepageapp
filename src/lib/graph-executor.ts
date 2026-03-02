@@ -7,10 +7,13 @@
  *   Resumable     — state is persisted to KV after every transition
  *   Composable    — executeGraph() is a pure async function; embeddable in larger graphs
  *
- * Graph topology:
- *   assess → generate → validate → deliver
- *                 ↑         │ (needs_revision, attempts < 2)
- *                 └─────────┘
+ * Graph topology (8 nodes):
+ *   assess → generate → validate → sanity_check → build → build_validate → deploy → deliver
+ *                  ↑         │ (needs_revision, attempts < 2)
+ *                  └─────────┘
+ *
+ * Sanity_check gates the auto-build pipeline. If it fails, or if any build/deploy
+ * node fails, the pipeline falls back to email-only delivery (graceful degradation).
  */
 
 import type {
@@ -19,10 +22,15 @@ import type {
   NodeId,
   EdgeLabel,
   NodeTransition,
+  NodeOutput,
   GraphResult,
   AssessOutput,
   GenerateOutput,
   ValidateOutput,
+  SanityCheckOutput,
+  BuildOutput,
+  BuildValidateOutput,
+  DeployOutput,
 } from "./graph-types";
 import {
   saveSession,
@@ -36,8 +44,13 @@ import {
   parseAssessOutput,
   parseGenerateOutput,
   parseValidateOutput,
+  parseBuildOutput,
+  parseBuildValidateOutput,
+  evaluateSanityCheck,
 } from "./graph-nodes";
 import { teamEmailHtml, clientEmailHtml } from "./email-templates";
+import { deployToCloudflare } from "./cloudflare-deploy";
+import { getModelId } from "./model-router";
 
 /* ─── Environment Interface ─── */
 
@@ -47,12 +60,16 @@ export interface GraphEnv {
   NOTIFY_EMAIL?: string;
   FROM_EMAIL?: string;
   INTAKE_KV?: KVStore;
+  CLOUDFLARE_API_TOKEN?: string;
+  CLOUDFLARE_ACCOUNT_ID?: string;
 }
 
 /* ─── Constants ─── */
 
 const MAX_GENERATE_ATTEMPTS = 2;   // 1 initial + 1 retry on validation failure
 const VALIDATE_PASS_THRESHOLD = 7; // out of 10
+const BUILD_VALIDATE_THRESHOLD = 7;
+const BUILD_MAX_TOKENS = 8192;     // enough for a one-page site, fits 60s Vercel timeout
 
 /* ─── Main Entry Point ─── */
 
@@ -128,34 +145,134 @@ async function executeNode(
   nodeId: Exclude<NodeId, "deliver">,
   context: SessionContext,
   env: GraphEnv,
-): Promise<{ output: AssessOutput | GenerateOutput | ValidateOutput; nextNode: NodeId; edge: EdgeLabel }> {
-
-  const prompt = NODE_PROMPTS[nodeId](context);
-  const rawText = await callClaude(prompt, env.ANTHROPIC_API_KEY);
+): Promise<{ output: NodeOutput; nextNode: NodeId; edge: EdgeLabel }> {
 
   switch (nodeId) {
+    /* ── Original nodes ────────────────────────────────────────────────────── */
+
     case "assess": {
+      const prompt = NODE_PROMPTS.assess(context);
+      const rawText = await callClaude(prompt, env.ANTHROPIC_API_KEY, getModelId("assess"));
       const output = parseAssessOutput(rawText);
       return { output, nextNode: "generate", edge: "proceed" };
     }
 
     case "generate": {
       context.generateAttempts += 1;
+      const prompt = NODE_PROMPTS.generate(context);
+      const rawText = await callClaude(prompt, env.ANTHROPIC_API_KEY, getModelId("generate"));
       const output = parseGenerateOutput(rawText);
       return { output, nextNode: "validate", edge: "generated" };
     }
 
     case "validate": {
+      const prompt = NODE_PROMPTS.validate(context);
+      const rawText = await callClaude(prompt, env.ANTHROPIC_API_KEY, getModelId("validate"));
       const output = parseValidateOutput(rawText);
       const canRetry = context.generateAttempts < MAX_GENERATE_ATTEMPTS;
 
       if (output.overallScore >= VALIDATE_PASS_THRESHOLD) {
-        return { output, nextNode: "deliver", edge: "passes" };
+        // Route to sanity_check instead of deliver
+        return { output, nextNode: "sanity_check", edge: "passes" };
       } else if (canRetry) {
         return { output, nextNode: "generate", edge: "needs_revision" };
       } else {
-        // Circuit breaker: deliver best effort
-        return { output, nextNode: "deliver", edge: "max_retries" };
+        // Circuit breaker: route to sanity_check (may still attempt build)
+        return { output, nextNode: "sanity_check", edge: "max_retries" };
+      }
+    }
+
+    /* ── New auto-build pipeline nodes ─────────────────────────────────────── */
+
+    case "sanity_check": {
+      // Procedural — no LLM call
+      const output = evaluateSanityCheck(context);
+      const nextNode: NodeId = output.qualifies ? "build" : "deliver";
+      return { output, nextNode, edge: output.edge };
+    }
+
+    case "build": {
+      try {
+        const prompt = NODE_PROMPTS.build(context);
+        const rawText = await callClaude(prompt, env.ANTHROPIC_API_KEY, getModelId("build"), BUILD_MAX_TOKENS);
+        const output = parseBuildOutput(rawText);
+        return { output, nextNode: "build_validate", edge: "built" };
+      } catch (err) {
+        console.error("Build node failed:", err);
+        // Graceful degradation: skip to deliver (email-only)
+        const fallback: BuildOutput = {
+          html: "",
+          buildNotes: `Build failed: ${err instanceof Error ? err.message : String(err)}`,
+          edge: "built",
+        };
+        context.build = fallback;
+        return { output: fallback, nextNode: "deliver", edge: "build_failed" };
+      }
+    }
+
+    case "build_validate": {
+      try {
+        const prompt = NODE_PROMPTS.build_validate(context);
+        const rawText = await callClaude(prompt, env.ANTHROPIC_API_KEY, getModelId("build_validate"));
+        const output = parseBuildValidateOutput(rawText);
+
+        if (output.overallScore >= BUILD_VALIDATE_THRESHOLD) {
+          return { output, nextNode: "deploy", edge: "html_passes" };
+        } else {
+          // No retry loop — fall back to email-only delivery
+          return { output, nextNode: "deliver", edge: "html_fails" };
+        }
+      } catch (err) {
+        console.error("Build validate failed:", err);
+        const fallback: BuildValidateOutput = {
+          scores: { structuralIntegrity: 0, responsiveness: 0, accessibility: 0, brandAlignment: 0 },
+          overallScore: 0,
+          issues: [`Validation error: ${err instanceof Error ? err.message : String(err)}`],
+          edge: "html_fails",
+        };
+        return { output: fallback, nextNode: "deliver", edge: "html_fails" };
+      }
+    }
+
+    case "deploy": {
+      // Check for Cloudflare env vars
+      if (!env.CLOUDFLARE_API_TOKEN || !env.CLOUDFLARE_ACCOUNT_ID) {
+        console.warn("Cloudflare env vars not configured — skipping deployment");
+        const fallback: DeployOutput = {
+          projectName: "",
+          deploymentUrl: "",
+          deploymentId: "",
+          edge: "deployed",
+        };
+        return { output: fallback, nextNode: "deliver", edge: "deploy_failed" };
+      }
+
+      try {
+        const result = await deployToCloudflare(
+          context.intakeData.business.businessName,
+          context.build!.html,
+          {
+            CLOUDFLARE_API_TOKEN: env.CLOUDFLARE_API_TOKEN,
+            CLOUDFLARE_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID,
+          },
+        );
+
+        const output: DeployOutput = {
+          projectName: result.projectName,
+          deploymentUrl: result.deploymentUrl,
+          deploymentId: result.deploymentId,
+          edge: "deployed",
+        };
+        return { output, nextNode: "deliver", edge: "deployed" };
+      } catch (err) {
+        console.error("Deploy to Cloudflare failed:", err);
+        const fallback: DeployOutput = {
+          projectName: "",
+          deploymentUrl: "",
+          deploymentId: "",
+          edge: "deployed",
+        };
+        return { output: fallback, nextNode: "deliver", edge: "deploy_failed" };
       }
     }
   }
@@ -166,13 +283,16 @@ async function executeNode(
 async function executeDeliverNode(
   context: SessionContext,
   env: GraphEnv,
-): Promise<{ teamEmailSent: boolean; clientEmailSent: boolean; creditsRemaining: number; edge: "done" }> {
+): Promise<{ teamEmailSent: boolean; clientEmailSent: boolean; creditsRemaining: number; siteUrl?: string; edge: "done" }> {
   const email = context.intakeData.contact.email;
   const enhancement = context.enhancement;
 
   if (!enhancement) {
     throw new Error("Cannot deliver: no enhancement output from generate node");
   }
+
+  // Determine if we have a live site URL
+  const siteUrl = context.deployment?.deploymentUrl || undefined;
 
   // ── Credits ────────────────────────────────────────────────────────────────
   let remaining = 3; // default if KV not configured
@@ -210,11 +330,21 @@ async function executeDeliverNode(
       enhancement,
       context.validation,
       context.iterationCount,
+      siteUrl,
     );
 
     const clientHtml = email
-      ? clientEmailHtml(context.intakeData, enhancement, remaining)
+      ? clientEmailHtml(context.intakeData, enhancement, remaining, siteUrl)
       : null;
+
+    // Subject lines change based on whether the site was auto-built
+    const teamSubject = siteUrl
+      ? `🚀 Auto-Built: ${context.intakeData.business.businessName}${context.iterationCount > 0 ? ` (Rev #${context.iterationCount})` : ""}`
+      : `🔥 New Lead: ${context.intakeData.business.businessName}${context.iterationCount > 0 ? ` (Rev #${context.iterationCount})` : ""}`;
+
+    const clientSubject = siteUrl
+      ? `Your site for ${context.intakeData.business.businessName} is live!`
+      : `Your Zontak brief for ${context.intakeData.business.businessName} is ready ✓`;
 
     const [teamResult, clientResult] = await Promise.allSettled([
       fetch("https://api.resend.com/emails", {
@@ -223,7 +353,7 @@ async function executeDeliverNode(
         body: JSON.stringify({
           from: env.FROM_EMAIL,
           to: env.NOTIFY_EMAIL,
-          subject: `🔥 New Lead: ${context.intakeData.business.businessName}${context.iterationCount > 0 ? ` (Rev #${context.iterationCount})` : ""}`,
+          subject: teamSubject,
           html: teamHtml,
         }),
       }).then(async (r) => {
@@ -238,7 +368,7 @@ async function executeDeliverNode(
             body: JSON.stringify({
               from: env.FROM_EMAIL,
               to: email,
-              subject: `Your Zontak brief for ${context.intakeData.business.businessName} is ready ✓`,
+              subject: clientSubject,
               html: clientHtml,
             }),
           }).then(async (r) => {
@@ -261,7 +391,7 @@ async function executeDeliverNode(
     console.warn("Email env vars not configured — skipping email notifications");
   }
 
-  return { teamEmailSent, clientEmailSent, creditsRemaining: remaining, edge: "done" };
+  return { teamEmailSent, clientEmailSent, creditsRemaining: remaining, siteUrl, edge: "done" };
 }
 
 /* ─── Helpers ─── */
@@ -269,7 +399,7 @@ async function executeDeliverNode(
 function applyOutput(
   context: SessionContext,
   nodeId: NodeId,
-  output: AssessOutput | GenerateOutput | ValidateOutput,
+  output: NodeOutput,
 ): void {
   switch (nodeId) {
     case "assess":
@@ -281,10 +411,27 @@ function applyOutput(
     case "validate":
       context.validation = output as ValidateOutput;
       break;
+    case "sanity_check":
+      context.sanityCheck = output as SanityCheckOutput;
+      break;
+    case "build":
+      context.build = output as BuildOutput;
+      break;
+    case "build_validate":
+      context.buildValidation = output as BuildValidateOutput;
+      break;
+    case "deploy":
+      context.deployment = output as DeployOutput;
+      break;
   }
 }
 
-async function callClaude(systemPrompt: string, apiKey: string): Promise<string> {
+async function callClaude(
+  systemPrompt: string,
+  apiKey: string,
+  model: string,
+  maxTokens: number = 4096,
+): Promise<string> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -293,8 +440,8 @@ async function callClaude(systemPrompt: string, apiKey: string): Promise<string>
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-3-7-sonnet-latest",
-      max_tokens: 4096,
+      model,
+      max_tokens: maxTokens,
       messages: [
         {
           role: "user",
@@ -321,6 +468,7 @@ function buildResult(state: ExecutionState): GraphResult {
     enhancement: state.context.enhancement,
     validationScore: state.context.validation?.overallScore,
     creditsRemaining: delivery?.creditsRemaining,
+    siteUrl: state.context.deployment?.deploymentUrl || undefined,
     history: state.history,
   };
 }

@@ -19,6 +19,10 @@
  *   NOTIFY_EMAIL             — team notification address
  *   FROM_EMAIL               — verified sender (e.g. noreply@getaonepageapp.com)
  *
+ * Optional env vars (auto-build + deploy to Cloudflare Pages):
+ *   CLOUDFLARE_API_TOKEN     — Cloudflare API token with Pages:Edit permission
+ *   CLOUDFLARE_ACCOUNT_ID    — Cloudflare account ID
+ *
  * Optional KV (session persistence + credits — Upstash Redis via Vercel Marketplace):
  *   UPSTASH_REDIS_REST_URL   — set automatically when Upstash Redis is connected
  *   UPSTASH_REDIS_REST_TOKEN — set automatically when Upstash Redis is connected
@@ -97,6 +101,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     NOTIFY_EMAIL: process.env.NOTIFY_EMAIL,
     FROM_EMAIL: process.env.FROM_EMAIL,
     INTAKE_KV: kvClient,
+    CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN,
+    CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID,
   };
 
   // Persist initial state (Resumable from the start)
